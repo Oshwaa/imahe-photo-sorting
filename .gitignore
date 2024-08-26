@@ -1,0 +1,8 @@
+#MODULES
+node_modules/
+#TEST UPLOAD FOLDER
+uploads/
+#PYTHON ENV
+venv/
+
+

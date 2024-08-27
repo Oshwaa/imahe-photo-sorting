@@ -6,3 +6,7 @@ uploads/
 venv/
 #reference folder
 reference/
+#test script
+test.py
+#yolo configs
+yolo/

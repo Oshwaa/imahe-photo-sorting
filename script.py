@@ -5,6 +5,9 @@ from PIL import Image
 import numpy as np
 import time
 
+detector = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor('assets/face_predictor.dat')
+
 def load_image(image_path):
     
     image = cv2.imread(image_path)
@@ -63,12 +66,12 @@ def detect_noise(image):
     
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     return gray.std()
-
+ 
 def hash_image(image_path):
-   
+    
     image = Image.open(image_path)
     hash_value = imagehash.phash(image)
-    print(f"Generated Hash for {image_path}: {hash_value}")  # Debug
+    #print(f"Generated Hash for {image_path}: {hash_value}")  # Debug
     return hash_value
 
 def get_reference_criteria(reference_image):
@@ -78,10 +81,10 @@ def get_reference_criteria(reference_image):
     noise = detect_noise(reference_image)
 
     criteria = {
-        'blurriness_max': blurriness * 4,  # FINE TUNE
+        'blurriness_max': blurriness * 3,  # FINE TUNE
         'exposure_min': exposure * 0.7,  
         'exposure_max': exposure * 4,  
-        'noise_max': noise * 2.4  
+        'noise_max': noise * 4  
     }
 
     print(f"Reference Criteria: {criteria}")  # Debug
@@ -89,7 +92,7 @@ def get_reference_criteria(reference_image):
 
 def load_yolo_model():
     try:
-        yolo_net = cv2.dnn.readNet('yolo/yolov3.weights', 'yolo/yolov3.cfg')
+        yolo_net = cv2.dnn.readNet('assets/yolov3.weights', 'assets/yolov3.cfg')
         layer_names = yolo_net.getLayerNames()
         unconnected_out_layers = yolo_net.getUnconnectedOutLayers()
         output_layers = [layer_names[i - 1] for i in unconnected_out_layers.flatten()]
@@ -98,15 +101,15 @@ def load_yolo_model():
         print(f"Error loading YOLO model: {e}")
         raise
 
-def detect_duplicates(image_path, hashes, threshold=5):
+def detect_duplicates(image_path, hashes, threshold):
     image_hash = hash_image(image_path)
-    print(f"Checking duplicates for {image_path} with hash {image_hash}")  # Debug
+    #print(f"Checking duplicates for {image_path} with hash {image_hash}")  # Debug
     is_duplicate = any(
         isinstance(existing_hash, imagehash.ImageHash) and
         (image_hash - existing_hash) < threshold
         for existing_hash in hashes.values()
     )
-    print(f"Is {image_path} a duplicate? {is_duplicate}")  # Debug
+    #print(f"Is {image_path} a duplicate? {is_duplicate}")  # Debug
     return is_duplicate
 
 def process_images(directory_path, reference_path):
@@ -132,7 +135,7 @@ def process_images(directory_path, reference_path):
                 image = load_image(image_path)
 
                 # Check for duplicates first
-                if detect_duplicates(image_path, hashes, threshold=5):
+                if detect_duplicates(image_path, hashes, threshold=15): #lower threshold = duplicates must be almost identical | higher = similar
                     status = 'Duplicate'
                     reason_text = 'Duplicate image'
                     duplicate_files.append(filename)
@@ -143,7 +146,7 @@ def process_images(directory_path, reference_path):
                 hashes[filename] = hash_image(image_path)
                 
                 blurriness = detect_blurriness(image)
-                print(f"Blurriness for {filename}: {blurriness}")  # Debug
+                #print(f"Blurriness for {filename}: {blurriness}")  # Debug
                 
                 if blurriness > criteria['blurriness_max']:
                     # If image is too blurry, only check for objects
@@ -162,7 +165,7 @@ def process_images(directory_path, reference_path):
 
                 # For non-blurry images, check all criteria
                 status, reason_text = evaluate_image_quality(image, criteria)
-                print(f"Evaluation for {filename}: Status = {status}, Reasons = {reason_text}")  # Debugging statement
+                #print(f"Evaluation for {filename}: Status = {status}, Reasons = {reason_text}")  # Debugging statement
                 
                 if status == 'Bad':
                     bad_files.append(filename)

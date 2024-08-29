@@ -8,5 +8,7 @@ venv/
 reference/
 #test script
 test.py
-#yolo configs
-yolo/
+run.py
+#configs
+assets/
+

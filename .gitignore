@@ -9,6 +9,7 @@ reference/
 #test script
 test.py
 run.py
+play.js
 #configs
 assets/
-
+.vscode

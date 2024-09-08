@@ -1,15 +1,14 @@
-const express = require('express');
+const express = require("express");
 const app = express();
-const uploadRoute = require('./routers/upload');
+const uploadRoute = require("./routers/upload");
 
 const port = 3000;
 
-app.use('/api', uploadRoute);
+app.use("/api", uploadRoute);
 
+app.get("/", (req, res) => {
+  res.send("Hello World");
+});
 
-app.get('/',(req,res) =>{
-    res.send('Hello World');
-})
-
-console.log(`Listening to PORT ${port}`)
+console.log(`Listening to PORT ${port}`);
 app.listen(port);

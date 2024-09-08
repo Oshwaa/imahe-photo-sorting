@@ -9,8 +9,9 @@ import time
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('assets/face_predictor.dat')
-MIN_FACE_WIDTH = 80 #Face pix
-MIN_FACE_HEIGHT = 80
+
+MIN_FACE_WIDTH,MIN_FACE_HEIGHT = 80,80 #Face pixels threshold 80x80
+
 def load_image(image_path):
     
     image = cv2.imread(image_path)
@@ -63,7 +64,7 @@ def detect_objects(image, yolo_net, output_layers):
     objects = [boxes[i] for i in indices.flatten()] if len(indices) > 0 else []
     
     cropped_objects = [crop_object(image, *box) for box in objects]
-
+    #print(f"Number of objects detected: {len(objects)}") #debug
     return cropped_objects
 
 def crop_object(image, x, y, w, h):
@@ -73,6 +74,30 @@ def get_blur(image):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurr = cv2.Laplacian(gray_image, cv2.CV_64F).var()
     return blurr
+
+def detect_main_focus(image):
+    saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+    
+    
+    (success, saliency_map) = saliency.computeSaliency(image)
+    if not success:
+        return None  
+    
+    saliency_map = (saliency_map * 255).astype("uint8")
+
+    
+    _, thresh_map = cv2.threshold(saliency_map, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    
+    contours, _ = cv2.findContours(thresh_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if contours:
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        
+        main_focus = image[y:y+h, x:x+w]
+        return main_focus
+    
+    return None
 
 def quality(image):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -116,8 +141,8 @@ def detect_duplicates(image_path,hashes, threshold):
 
 LEFT_EYE_POINTS = list(range(36, 42))
 RIGHT_EYE_POINTS = list(range(42, 48))  
-def resize_image(image, width=2000):
-    """Resize the image to the specified width while maintaining aspect ratio."""
+def resize_image(image, width=2000): #ADJUST 
+
     aspect_ratio = width / float(image.shape[1])
     height = int(image.shape[0] * aspect_ratio)
     resized_image = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
@@ -130,7 +155,6 @@ def calculate_ear(eye):  #standard
     return (A + B) / (2.0 * C)
 
 def are_eyes_closed(image, ear_threshold=0.2):
-    """Detects if eyes are closed in a given image based on EAR."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     faces = detector(gray)
 
@@ -138,24 +162,19 @@ def are_eyes_closed(image, ear_threshold=0.2):
         return False  # No face detected
 
     for face in faces:
-        # Check if the face is large enough to process
         if face.width() < MIN_FACE_WIDTH or face.height() < MIN_FACE_HEIGHT:
             continue  # Skip faces that are too small
 
         landmarks = predictor(gray, face)
 
-        # Get the left and right eye landmarks
         left_eye = [(landmarks.part(point).x, landmarks.part(point).y) for point in LEFT_EYE_POINTS]
         right_eye = [(landmarks.part(point).x, landmarks.part(point).y) for point in RIGHT_EYE_POINTS]
 
-        # Calculate the EAR for both eyes
         left_ear = calculate_ear(left_eye)
         right_ear = calculate_ear(right_eye)
-
-        # Average the EAR for both eyes
+        
         avg_ear = (left_ear + right_ear) / 2.0
 
-        # Check if the EAR is below the threshold indicating closed eyes
         if avg_ear < ear_threshold:
             return True  # Eyes are closed
 
@@ -181,7 +200,7 @@ def process_images(directory_path,reference_path):
             try:
                 image = load_image(image_path)
                 resized_image = resize_image(image)
-                if are_eyes_closed(resized_image, ear_threshold=0.2):
+                if are_eyes_closed(resized_image, ear_threshold=0.15):
                     status = 'Flagged'
                     reason_text = 'closed eye detected'
                     flagged_files.append(filename)
@@ -193,19 +212,21 @@ def process_images(directory_path,reference_path):
                     duplicate_files.append(filename)
                     results.append({'filename': filename,'status':status,'reason':reason_text})
                     continue
-                hashes[filename] = hash_image(image_path)
+                
 
                 blur = get_blur(image)
                 
                 if blur > criteria['blurriness_max']:
-                    objects = detect_objects(image,yolo_net,output_layers)
+                    main_focus = detect_main_focus(resized_image)
+                    objects = detect_objects(main_focus,yolo_net,output_layers)
                     if objects:
                         status = 'Good'
                         reason_text = 'Object in focus'
                         good_files.append(filename)
+                        hashes[filename] = hash_image(image_path)
                     else:
                         status = 'Bad'
-                        reason_text = 'Object too subtle in a blurr image'
+                        reason_text = 'No Objects Detected'
                         bad_files.append(filename)
                     results.append({'filename': filename,'status':status,'reason':reason_text})
                     continue
@@ -217,6 +238,7 @@ def process_images(directory_path,reference_path):
                     bad_files.append(filename)
                 else:
                     good_files.append(filename)
+                    hashes[filename] = hash_image(image_path)
                 
                 results.append({'filename': filename, 'status': status, 'reasons': reason_text})
                 
@@ -265,8 +287,9 @@ def generate_bash_script(good_files, bad_files, duplicate_files,flagged_files):
     return bash_script   
     
 def main():
-    directory_path = 'uploads'
-    reference_path = 'reference/reference.jpg'
+    #CHANGE TO INPUT IN WPF
+    directory_path = 'uploads' 
+    reference_path = 'reference/reference.JPG' 
     
     time_start = time.time()
 
